@@ -15,6 +15,9 @@ dependencies = [
 	"fastapi",
 	"uvicorn[standard]",
     "streamlit",
+    "pydantic",
+    "python-multipart",
+    "aiohttp"
 ]
 
 [tool.setuptools]
