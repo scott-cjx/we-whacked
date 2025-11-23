@@ -122,10 +122,13 @@ def show_accessible_map():
     ramps_fg = folium.FeatureGroup(name='Ramps (city infrastructure)')
     service_fg = folium.FeatureGroup(name='Service Animal Friendly')
 
-    # Ask user which category they want to focus on. Default to 'None' to avoid heavy initial rendering.
+    # Ask user which category they want to focus on. Default to 'All' so map shows everything initially.
+    category_options = ["None", "All", "Playgrounds", "Parks", "Ramps", "Parking", "Restrooms", "Service Animal Friendly"]
+    # default to 'All' (index 1)
     category_choice = st.selectbox(
         "What are you looking for?",
-        ["None", "All", "Playgrounds", "Parks", "Ramps", "Parking", "Restrooms", "Service Animal Friendly"]
+        category_options,
+        index=category_options.index("All")
     )
 
     # Sample POIs (replace with real data later)
@@ -294,34 +297,42 @@ def show_accessible_map():
         return folium.DivIcon(html=html, icon_size=(size, int(size*0.6)), icon_anchor=(int(size/2), int(size/2)))
 
     # Add restaurant markers to the appropriate feature group (details_fg used here)
+    reviews_js_entries = []
     for r in restaurant_pois:
         # build popup content and reviews panel HTML (escaped for JS)
         popup_html = f"<div style='min-width:200px'><strong>{r['name']}</strong><br/>Rating: {r['rating']}</div>"
 
-        # Build the HTML for the left reviews panel
-        reviews_panel_html = f"<h3 style='margin-top:0'>{r['name']}</h3>"
-        reviews_panel_html += f"<div style='font-size:16px;font-weight:600'>Rating: {r['rating']}</div>"
-        reviews_panel_html += "<hr/>"
+        # Build the HTML that will become the content under the Reviews title
+        # (we do NOT replace the title; we update only the 'reviews-content' div)
+        reviews_content_html = f"<div style='font-size:18px;font-weight:700;margin-bottom:6px'>{r['name']}</div>"
+        # show numeric rating and stars on top
+        stars = '★' * int(round(r['rating']))
+        reviews_content_html += f"<div style='font-size:16px;color:#ffb400;font-weight:700;margin-bottom:10px'>{r['rating']} {stars}</div>"
+        reviews_content_html += "<div style='border-top:1px solid #eee;margin-bottom:8px'></div>"
         for rev in r['reviews']:
-            reviews_panel_html += f"<div style='margin-bottom:8px'><div style='font-weight:600'>{rev['stars']}/5</div><div>{rev['text']}</div></div>"
+            reviews_content_html += (
+                f"<div style='margin-bottom:12px'><div style='font-weight:600'>{rev['stars']}/5</div>"
+                f"<div style='color:#222'>{rev['text']}</div></div>"
+            )
 
         # JSON-escape the panel HTML so we can inject it into a small script in the popup
         import json as _json
-        escaped_panel = _json.dumps(reviews_panel_html)
+        escaped_panel = _json.dumps(reviews_content_html)
 
-        # Create a popup with a button that sends the reviews HTML to the parent
-        # via postMessage. Using a button avoids running scripts at map load
-        # time which can break the Folium/Leaflet JS inside the iframe.
-        # The escaped_panel is a JSON string containing the HTML we want to show.
-        # Build a small JS call that posts the HTML to the parent when the
-        # button is clicked.
+        # Create a popup that only has a button which sends the reviews HTML
+        # to the parent via postMessage. This avoids showing review text on
+        # the map itself.
+        # Build a JS snippet that posts the escaped HTML panel to the parent window.
+        # Use double quotes inside the JS object so we can safely wrap the
+        # entire onclick attribute value in single quotes below.
         post_message_js = (
-            "window.parent.postMessage({type:'show_reviews', html:" + escaped_panel + "}, '*');"
+            'window.parent.postMessage({"type":"show_reviews","html":' + escaped_panel + '}, "*");'
         )
 
         popup_with_button = (
-            f"{popup_html}<div style='margin-top:8px'><button onclick=\"{post_message_js}\" "
-            "style='padding:6px 8px;border-radius:6px;border:1px solid #1677cc;background:#1e90ff;color:#fff;cursor:pointer'>Show reviews</button></div>"
+            "<div style='text-align:center;margin-top:6px'>"
+            f"<button onclick='{post_message_js}' style='padding:8px 10px; border-radius:6px; border:1px solid #1677cc; background:#1e90ff; color:#fff; cursor:pointer'>Show reviews</button>"
+            "</div>"
         )
 
         folium.Marker(
@@ -330,28 +341,101 @@ def show_accessible_map():
             icon=make_rating_div_icon(r['rating'])
         ).add_to(details_fg)
 
+        # Add this restaurant's reviews content to the JS mapping so we can
+        # attach a click handler to the corresponding Leaflet marker in the
+        # rendered map HTML. Use JSON to safely escape the HTML string.
+        reviews_js_entries.append({
+            'lat': r['lat'],
+            'lng': r['lng'],
+            'html': reviews_content_html
+        })
+
     # Add the single LayerControl (one corner bar)
     folium.LayerControl(collapsed=False).add_to(m)
 
     # Render map HTML and display in Streamlit with a left reviews panel
     map_html = m.get_root().render()
 
-    # Prepare initial reviews panel (empty / instruction)
-    reviews_placeholder = "<div style='padding:12px;font-size:14px;color:#222'>Click an item on the map to see reviews here.</div>"
+    # Inject a small script that finds Leaflet markers by coordinates and
+    # attaches a click handler which posts the review HTML to the parent.
+    # This works around popup HTML sanitization that can remove onclick handlers.
+    try:
+        import json as _json
+        reviews_js = _json.dumps(reviews_js_entries)
+        attach_script = (
+            "<script>\n"
+            "(function(){\n"
+            "  var reviewsMap = " + reviews_js + ";\n"
+            "  function attachHandlers(){\n"
+            "    try{\n"
+            "      for(var k in window.map._layers){\n"
+            "        var layer = window.map._layers[k];\n"
+            "        if(!layer || !layer.getLatLng) continue;\n"
+            "        var ll = layer.getLatLng();\n"
+            "        for(var i=0;i<reviewsMap.length;i++){\n"
+            "          var r = reviewsMap[i];\n"
+            "          if(Math.abs(ll.lat - r.lat) < 1e-6 && Math.abs(ll.lng - r.lng) < 1e-6){\n"
+            "            (function(html, lyr){\n"
+            "              lyr.on('click', function(){ window.parent.postMessage({type:'show_reviews', html: html}, '*'); });\n"
+            "            })(r.html, layer);\n"
+            "            break;\n"
+            "          }\n"
+            "        }\n"
+            "      }\n"
+            "    }catch(e){console.log('attachHandlers error', e);}\n"
+            "  }\n"
+            "  setTimeout(attachHandlers, 500);\n"
+            "})();\n"
+            "</script>\n"
+        )
+        map_html = map_html + attach_script
+    except Exception:
+        # If injection fails, continue without the automatic handlers
+        pass
+
+    # Prepare initial reviews panel (title + content placeholder) — larger, nicer styling
+    reviews_title_html = "<div style='font-size:20px;font-weight:700;margin-bottom:8px;'>Reviews</div>"
+    reviews_content_placeholder = ("<div style='padding:6px 0;font-size:14px;color:#666;'>Click an item on the map and then press 'Show reviews' in the popup to view details here.</div>")
 
     left_col, right_col = st.columns([3, 9])
     with left_col:
-        # Reviews panel and a message listener to receive review HTML from
-        # the map iframe. The map will postMessage({type:'show_reviews', html: ...})
-        # when the user clicks the popup button.
-        listener_script = (
-            "<script>window.addEventListener('message', function(e) {"
-            "try{var d = e.data; if(d && d.type==='show_reviews'){"
-            "var el = document.getElementById('reviews-panel'); if(el){ el.innerHTML = d.html; } } }catch(err){console.log(err);} }, false);</script>"
-        )
-        st.markdown("<div id='reviews-panel'>" + reviews_placeholder + "</div>" + listener_script, unsafe_allow_html=True)
+            # Reviews panel and a message listener to receive review HTML from
+            # the map iframe. The map will postMessage({type:'show_reviews', html: ...})
+            # when the user clicks the popup button.
+            # Wrap the script in a hidden div so nothing resembling code appears on-screen
+            listener_script = '''
+            <div style='display:none'>
+            <script>
+            window.addEventListener('message', function(e) {
+                try {
+                    var d = e.data;
+                    if (d && d.type === 'show_reviews') {
+                        var left = document.getElementById('reviews-content'); if (left) { left.innerHTML = d.html; }
+                        /* hide map iframe(s) and show reviews in the map area */
+                        document.querySelectorAll('iframe').forEach(function(f){ f.style.display='none'; });
+                        var mr = document.getElementById('map-reviews');
+                        if (mr) {
+                            mr.style.display = 'block';
+                            mr.innerHTML = d.html + '<div style="margin-top:12px"><button id="back-to-map" style="padding:8px 10px;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;cursor:pointer">Back to map</button></div>';
+                            var btn = document.getElementById('back-to-map');
+                            if (btn) {
+                                btn.addEventListener('click', function(){
+                                    mr.style.display='none';
+                                    document.querySelectorAll('iframe').forEach(function(f){ f.style.display='block'; });
+                                });
+                            }
+                        }
+                    }
+                } catch(err) { console.log(err); }
+            }, false);
+            </script>
+            </div>
+            '''
+            st.markdown("<div id='reviews-panel'>" + reviews_title_html + "<div id='reviews-content'>" + reviews_content_placeholder + "</div></div>" + listener_script, unsafe_allow_html=True)
 
     with right_col:
+        # Placeholder div that will display reviews in place of the map when requested
+        st.markdown("<div id='map-reviews' style='display:none;padding:12px;'></div>", unsafe_allow_html=True)
         components.html(map_html, height=720)
 
 if __name__ == "__main__":
