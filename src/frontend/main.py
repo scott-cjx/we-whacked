@@ -24,6 +24,27 @@ import requests
 def main():
     st.set_page_config(page_title="Super App", page_icon=":rocket:")
 
+    # Session state for navigation visibility and current page
+    if 'app_choice' not in st.session_state:
+        st.session_state.app_choice = 'Home'
+    if 'show_nav' not in st.session_state:
+        st.session_state.show_nav = False
+
+    # Show the top menu only when navigation is enabled (not on initial homepage)
+    if st.session_state.show_nav:
+        app_choice = st.selectbox("Menu", ["Home", "Accessible Map", "User Accessibility Reviews", "Request Service"], index=["Home", "Accessible Map", "User Accessibility Reviews", "Request Service"].index(st.session_state.app_choice))
+        st.session_state.app_choice = app_choice
+        # If user selects Home from the menu, hide the navigation again
+        if app_choice == 'Home':
+            st.session_state.show_nav = False
+    else:
+        app_choice = st.session_state.app_choice
+
+    if app_choice == "Home":
+        show_home_page()
+    elif app_choice == "User Accessibility Reviews":
+        show_mini_app_1()
+    elif app_choice == "Request Service":
     st.sidebar.title("Navigation")
     app_choice = st.sidebar.radio("Go to", ["Home", "Reviews", "Mini App 2", "Mini App 3"])
 
@@ -45,6 +66,65 @@ def main():
 
 
 def show_home_page():
+    st.title("Welcome to MapAble Boston!")
+    copy = (
+        "Your friendly guide to accessible places in Boston. Whether you’re looking for "
+        "wheelchair-friendly restaurants, accessible public spaces, or user-rated bathrooms, "
+        "MapAble Boston makes it easy to explore the city with confidence. See ratings, read reviews, "
+        "and discover the most accessible spots near you—all on one simple, interactive map."
+    )
+    # Use a clean, slightly larger paragraph font to match the app's simple style
+    st.markdown(f"<div style='font-size:18px;line-height:1.5'>{copy}</div>", unsafe_allow_html=True)
+    # Buttons for navigation placed under the intro. These reveal the top menu when used.
+    st.write("")
+    # Inject CSS to make homepage buttons equal width, evenly spaced, and styled light blue
+    st.markdown(
+        """
+        <style>
+        /* Row uses fixed gap so spacing between each button is equal */
+        .home-row {display:flex; gap:24px; justify-content:center; align-items:center; max-width:780px; margin:12px auto;}
+        /* Each column takes equal available space; inner button fills its column (up to max-width) */
+        .home-col {flex:1 1 0; display:flex; justify-content:center}
+        /* Buttons: solid blue background with white text */
+        .home-col .stButton>button {width:100%; max-width:240px; padding:10px 12px; background-color:#1e90ff; border:1px solid #1677cc; color:#ffffff; border-radius:8px}
+        .home-col .stButton>button:hover {background-color:#166bd8}
+        .home-col .stButton>button:focus {outline:3px solid rgba(30,144,255,0.25)}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<div class='home-row'>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("<div class='home-col'>", unsafe_allow_html=True)
+        if st.button("Accessible Map", key="home_map"):
+            st.session_state.app_choice = "Accessible Map"
+            st.session_state.show_nav = True
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown("<div class='home-col'>", unsafe_allow_html=True)
+        if st.button("User Accessibility Reviews", key="home_reviews"):
+            st.session_state.app_choice = "User Accessibility Reviews"
+            st.session_state.show_nav = True
+        st.markdown("</div>", unsafe_allow_html=True)
+    with col3:
+        st.markdown("<div class='home-col'>", unsafe_allow_html=True)
+        if st.button("Request Service", key="home_request"):
+            st.session_state.app_choice = "Request Service"
+            st.session_state.show_nav = True
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def show_mini_app_1():
+    st.header("User Accessibility Reviews")
+    st.write("This area will show user-submitted accessibility reviews and ratings.")
+    # Add your Mini App 1 code here
+
+def show_mini_app_2():
+    st.header("Request Service")
+    st.write("Request accessibility-related services or report needs in the city.")
+    # Add your Mini App 2 code here
     st.title("Welcome to the Super App!")
     st.write("This is the central hub for all our mini-applications.")
     st.write("Select 'Reviews' to open the reviews UI where users can submit and view reviews for map locations.")
@@ -148,6 +228,8 @@ def show_mini_app_3():
 
 def show_accessible_map():
     st.header("Accessible Places Map — Boston")
+    # Prominent intro line (placed above the descriptive line)
+    st.markdown("<div style='font-size:18px; font-weight:600; color:#222; margin-bottom:6px;'>Find all accessible places near you with our map, complete with ratings and reviews!</div>", unsafe_allow_html=True)
     st.write("Interactive map with accessible park entrances, ramps, parking, playgrounds and service-animal friendly places.")
 
     try:
@@ -167,10 +249,13 @@ def show_accessible_map():
     ramps_fg = folium.FeatureGroup(name='Ramps (city infrastructure)')
     service_fg = folium.FeatureGroup(name='Service Animal Friendly')
 
-    # Ask user which category they want to focus on
+    # Ask user which category they want to focus on. Default to 'All' so map shows everything initially.
+    category_options = ["None", "All", "Playgrounds", "Parks", "Ramps", "Parking", "Restrooms", "Service Animal Friendly"]
+    # default to 'All' (index 1)
     category_choice = st.selectbox(
         "What are you looking for?",
-        ["All", "Playgrounds", "Parks", "Ramps", "Parking", "Restrooms", "Service Animal Friendly"]
+        category_options,
+        index=category_options.index("All")
     )
 
     # Sample POIs (replace with real data later)
@@ -222,29 +307,31 @@ def show_accessible_map():
         # restroom fallback
         return ('🚻', '#e34a33', 'Restrooms')
 
-    for p in pois:
-        emoji, color, cat = icon_spec_for_props({'type': p.get('type'), 'name': p.get('name')}, source_name=p.get('type'))
-        # decide vibrant or subdued
-        if category_choice == 'All' or category_choice == cat:
-            icon = make_div_icon(emoji, color, size=30)
-        else:
-            icon = make_div_icon(emoji, '#bdbdbd', size=16)
+    # Render sample POIs only when the user has chosen a category (not when 'None')
+    if category_choice != 'None':
+        for p in pois:
+            emoji, color, cat = icon_spec_for_props({'type': p.get('type'), 'name': p.get('name')}, source_name=p.get('type'))
+            # decide vibrant or subdued
+            if category_choice == 'All' or category_choice == cat:
+                icon = make_div_icon(emoji, color, size=30)
+            else:
+                icon = make_div_icon(emoji, '#bdbdbd', size=16)
 
-        # choose feature group mapping for sample types
-        if p['type'] == 'playground':
-            fg = details_fg
-        elif p['type'] == 'restroom':
-            fg = entrances_fg
-        elif p['type'] == 'ramp':
-            fg = ramps_fg
-        elif p['type'] == 'parking':
-            fg = entrances_fg
-        elif p['type'] == 'service':
-            fg = service_fg
-        else:
-            fg = details_fg
+            # choose feature group mapping for sample types
+            if p['type'] == 'playground':
+                fg = details_fg
+            elif p['type'] == 'restroom':
+                fg = entrances_fg
+            elif p['type'] == 'ramp':
+                fg = ramps_fg
+            elif p['type'] == 'parking':
+                fg = entrances_fg
+            elif p['type'] == 'service':
+                fg = service_fg
+            else:
+                fg = details_fg
 
-        folium.Marker(location=[p['lat'], p['lng']], popup=p['name'], icon=icon).add_to(fg)
+            folium.Marker(location=[p['lat'], p['lng']], popup=p['name'], icon=icon).add_to(fg)
 
     # Add the feature groups to the map
     entrances_fg.add_to(m)
@@ -276,44 +363,207 @@ def show_accessible_map():
 
     # (Removed user URL inputs — datasets are loaded from configured endpoints only)
 
-    for ep in endpoints:
-        try:
-            resp = requests.get(ep['url'], timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+    # Only fetch and render endpoint data when the user has selected a category (not when 'None')
+    if category_choice != 'None':
+        for ep in endpoints:
+            try:
+                resp = requests.get(ep['url'], timeout=10)
+                resp.raise_for_status()
+                data = resp.json()
 
-            # If FeatureCollection with point features, add as individual markers with icons
-            if isinstance(data, dict) and data.get('type') == 'FeatureCollection' and 'features' in data:
-                for feat in data['features']:
-                    geom = feat.get('geometry') or {}
-                    props = feat.get('properties') or {}
-                    if geom and geom.get('type') == 'Point':
-                        coords = geom.get('coordinates')
-                        # GeoJSON coordinates are [lng, lat]
-                        if coords and len(coords) >= 2:
-                            lng, lat = coords[0], coords[1]
-                            emoji, color, cat = icon_spec_for_props(props, source_name=ep.get('name'))
-                            if category_choice == 'All' or category_choice == cat:
-                                icon = make_div_icon(emoji, color, size=30)
-                            else:
-                                icon = make_div_icon(emoji, '#bdbdbd', size=16)
-                            folium.Marker(location=[lat, lng], popup=props.get('NAME') or props.get('name') or '', icon=icon).add_to(ep['layer'])
-                    else:
-                        # Non-point geometries — add the raw GeoJson to the layer
-                        folium.GeoJson(feat, style_function=lambda feature, style=ep['style']: style(feature)).add_to(ep['layer'])
-            else:
-                # Fallback: add entire GeoJSON if structure unexpected
-                folium.GeoJson(data, name=ep['name'], style_function=lambda feature, style=ep['style']: style(feature)).add_to(ep['layer'])
-        except Exception as e:
-            # Keep errors out of the main page UI; surface them in the sidebar
-            st.sidebar.warning(f"Failed to load {ep['name']}: {e}")
+                # If FeatureCollection with point features, add as individual markers with icons
+                if isinstance(data, dict) and data.get('type') == 'FeatureCollection' and 'features' in data:
+                    for feat in data['features']:
+                        geom = feat.get('geometry') or {}
+                        props = feat.get('properties') or {}
+                        if geom and geom.get('type') == 'Point':
+                            coords = geom.get('coordinates')
+                            # GeoJSON coordinates are [lng, lat]
+                            if coords and len(coords) >= 2:
+                                lng, lat = coords[0], coords[1]
+                                emoji, color, cat = icon_spec_for_props(props, source_name=ep.get('name'))
+                                if category_choice == 'All' or category_choice == cat:
+                                    icon = make_div_icon(emoji, color, size=30)
+                                else:
+                                    icon = make_div_icon(emoji, '#bdbdbd', size=16)
+                                folium.Marker(location=[lat, lng], popup=props.get('NAME') or props.get('name') or '', icon=icon).add_to(ep['layer'])
+                        else:
+                            # Non-point geometries — add the raw GeoJson to the layer
+                            folium.GeoJson(feat, style_function=lambda feature, style=ep['style']: style(feature)).add_to(ep['layer'])
+                else:
+                    # Fallback: add entire GeoJSON if structure unexpected
+                    folium.GeoJson(data, name=ep['name'], style_function=lambda feature, style=ep['style']: style(feature)).add_to(ep['layer'])
+            except Exception as e:
+                # Keep errors out of the main page UI; surface them in the sidebar
+                st.sidebar.warning(f"Failed to load {ep['name']}: {e}")
+
+    # --- Restaurants / Cafes custom markers (soft-corner rectangles with rating) ---
+    # We'll add a small infrastructure to place restaurant markers with attached reviews.
+    # For now, add a placeholder Clover Food Lab location (use precise coords if you provide them).
+    restaurant_pois = [
+        {
+            'id': 'clover_fin',
+            'name': 'CLOVER FOOD LAB (sample location)',
+            'lat': 42.3605,
+            'lng': -71.0580,
+            'rating': 4.9,
+            'reviews': [
+                { 'text': 'They use online menus to let customers get the menu read out loud', 'stars': 4.8 },
+                { 'text': "The fact that I have an access-related question doesn’t faze them because they’re supposed to answer a lot of questions.", 'stars': 5.0 }
+            ]
+        }
+    ]
+
+    def make_rating_div_icon(rating, size=64):
+        # Create a soft-corner rectangle with the rating text (white text on blue)
+        html = (
+            f"<div style=\"display:flex;align-items:center;justify-content:center;"
+            f"background:#1e90ff;color:#fff;border-radius:10px;padding:6px 10px;min-width:{int(size*0.8)}px;"
+            f"font-weight:600;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,0.25)\">{rating}</div>"
+        )
+        return folium.DivIcon(html=html, icon_size=(size, int(size*0.6)), icon_anchor=(int(size/2), int(size/2)))
+
+    # Add restaurant markers to the appropriate feature group (details_fg used here)
+    reviews_js_entries = []
+    for r in restaurant_pois:
+        # build popup content and reviews panel HTML (escaped for JS)
+        popup_html = f"<div style='min-width:200px'><strong>{r['name']}</strong><br/>Rating: {r['rating']}</div>"
+
+        # Build the HTML that will become the content under the Reviews title
+        # (we do NOT replace the title; we update only the 'reviews-content' div)
+        reviews_content_html = f"<div style='font-size:18px;font-weight:700;margin-bottom:6px'>{r['name']}</div>"
+        # show numeric rating and stars on top
+        stars = '★' * int(round(r['rating']))
+        reviews_content_html += f"<div style='font-size:16px;color:#ffb400;font-weight:700;margin-bottom:10px'>{r['rating']} {stars}</div>"
+        reviews_content_html += "<div style='border-top:1px solid #eee;margin-bottom:8px'></div>"
+        for rev in r['reviews']:
+            reviews_content_html += (
+                f"<div style='margin-bottom:12px'><div style='font-weight:600'>{rev['stars']}/5</div>"
+                f"<div style='color:#222'>{rev['text']}</div></div>"
+            )
+
+        # JSON-escape the panel HTML so we can inject it into a small script in the popup
+        import json as _json
+        escaped_panel = _json.dumps(reviews_content_html)
+
+        # Create a popup that only has a button which sends the reviews HTML
+        # to the parent via postMessage. This avoids showing review text on
+        # the map itself.
+        # Build a JS snippet that posts the escaped HTML panel to the parent window.
+        # Use double quotes inside the JS object so we can safely wrap the
+        # entire onclick attribute value in single quotes below.
+        post_message_js = (
+            'window.parent.postMessage({"type":"show_reviews","html":' + escaped_panel + '}, "*");'
+        )
+
+        popup_with_button = (
+            "<div style='text-align:center;margin-top:6px'>"
+            f"<button onclick='{post_message_js}' style='padding:8px 10px; border-radius:6px; border:1px solid #1677cc; background:#1e90ff; color:#fff; cursor:pointer'>Show reviews</button>"
+            "</div>"
+        )
+
+        folium.Marker(
+            location=[r['lat'], r['lng']],
+            popup=folium.Popup(popup_with_button, max_width=300),
+            icon=make_rating_div_icon(r['rating'])
+        ).add_to(details_fg)
+
+        # Add this restaurant's reviews content to the JS mapping so we can
+        # attach a click handler to the corresponding Leaflet marker in the
+        # rendered map HTML. Use JSON to safely escape the HTML string.
+        reviews_js_entries.append({
+            'lat': r['lat'],
+            'lng': r['lng'],
+            'html': reviews_content_html
+        })
 
     # Add the single LayerControl (one corner bar)
     folium.LayerControl(collapsed=False).add_to(m)
 
-    # Render map HTML and display in Streamlit
+    # Render map HTML and display in Streamlit with a left reviews panel
     map_html = m.get_root().render()
-    components.html(map_html, height=720)
+
+    # Inject a small script that finds Leaflet markers by coordinates and
+    # attaches a click handler which posts the review HTML to the parent.
+    # This works around popup HTML sanitization that can remove onclick handlers.
+    try:
+        import json as _json
+        reviews_js = _json.dumps(reviews_js_entries)
+        attach_script = (
+            "<script>\n"
+            "(function(){\n"
+            "  var reviewsMap = " + reviews_js + ";\n"
+            "  function attachHandlers(){\n"
+            "    try{\n"
+            "      for(var k in window.map._layers){\n"
+            "        var layer = window.map._layers[k];\n"
+            "        if(!layer || !layer.getLatLng) continue;\n"
+            "        var ll = layer.getLatLng();\n"
+            "        for(var i=0;i<reviewsMap.length;i++){\n"
+            "          var r = reviewsMap[i];\n"
+            "          if(Math.abs(ll.lat - r.lat) < 1e-6 && Math.abs(ll.lng - r.lng) < 1e-6){\n"
+            "            (function(html, lyr){\n"
+            "              lyr.on('click', function(){ window.parent.postMessage({type:'show_reviews', html: html}, '*'); });\n"
+            "            })(r.html, layer);\n"
+            "            break;\n"
+            "          }\n"
+            "        }\n"
+            "      }\n"
+            "    }catch(e){console.log('attachHandlers error', e);}\n"
+            "  }\n"
+            "  setTimeout(attachHandlers, 500);\n"
+            "})();\n"
+            "</script>\n"
+        )
+        map_html = map_html + attach_script
+    except Exception:
+        # If injection fails, continue without the automatic handlers
+        pass
+
+    # Prepare initial reviews panel (title + content placeholder) — larger, nicer styling
+    reviews_title_html = "<div style='font-size:20px;font-weight:700;margin-bottom:8px;'>Reviews</div>"
+    reviews_content_placeholder = ("<div style='padding:6px 0;font-size:14px;color:#666;'>Click an item on the map and then press 'Show reviews' in the popup to view details here.</div>")
+
+    left_col, right_col = st.columns([3, 9])
+    with left_col:
+            # Reviews panel and a message listener to receive review HTML from
+            # the map iframe. The map will postMessage({type:'show_reviews', html: ...})
+            # when the user clicks the popup button.
+            # Wrap the script in a hidden div so nothing resembling code appears on-screen
+            listener_script = '''
+            <div style='display:none'>
+            <script>
+            window.addEventListener('message', function(e) {
+                try {
+                    var d = e.data;
+                    if (d && d.type === 'show_reviews') {
+                        var left = document.getElementById('reviews-content'); if (left) { left.innerHTML = d.html; }
+                        /* hide map iframe(s) and show reviews in the map area */
+                        document.querySelectorAll('iframe').forEach(function(f){ f.style.display='none'; });
+                        var mr = document.getElementById('map-reviews');
+                        if (mr) {
+                            mr.style.display = 'block';
+                            mr.innerHTML = d.html + '<div style="margin-top:12px"><button id="back-to-map" style="padding:8px 10px;border-radius:6px;border:1px solid #ccc;background:#f3f3f3;cursor:pointer">Back to map</button></div>';
+                            var btn = document.getElementById('back-to-map');
+                            if (btn) {
+                                btn.addEventListener('click', function(){
+                                    mr.style.display='none';
+                                    document.querySelectorAll('iframe').forEach(function(f){ f.style.display='block'; });
+                                });
+                            }
+                        }
+                    }
+                } catch(err) { console.log(err); }
+            }, false);
+            </script>
+            </div>
+            '''
+            st.markdown("<div id='reviews-panel'>" + reviews_title_html + "<div id='reviews-content'>" + reviews_content_placeholder + "</div></div>" + listener_script, unsafe_allow_html=True)
+
+    with right_col:
+        # Placeholder div that will display reviews in place of the map when requested
+        st.markdown("<div id='map-reviews' style='display:none;padding:12px;'></div>", unsafe_allow_html=True)
+        components.html(map_html, height=720)
 
 if __name__ == "__main__":
     main()
