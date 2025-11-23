@@ -96,38 +96,84 @@ def show_mini_app_3():
     st.header("Mini App 3")
     st.write("This is the third mini-application.")
     # Add your Mini App 3 code here
+import streamlit as st
+import folium
+from streamlit_folium import st_folium
+import requests
+
+# --- Helper functions ---
+
+def make_div_icon(emoji, bg, size=30):
+    font_size = max(8, int(size * 0.53))
+    html = f"<div style='background:{bg};color:white;border-radius:50%;width:{size}px;height:{size}px;display:flex;align-items:center;justify-content:center;font-size:{font_size}px'>{emoji}</div>"
+    anchor = int(size / 2)
+    return folium.DivIcon(html=html, icon_size=(size, size), icon_anchor=(anchor, anchor))
+
+def icon_spec_for_props(props, source_name=None):
+    t = ''
+    name = ''
+    if isinstance(props, dict):
+        t = (props.get('TYPE') or props.get('type') or props.get('feature_type') or props.get('category') or '')
+        name = (props.get('NAME') or props.get('name') or props.get('park_name') or '')
+    t = (t or '').lower()
+    name = (name or '').lower()
+    if 'play' in t or 'play' in name or 'playground' in name:
+        return ('🛝', '#ff66b2', 'Playgrounds')
+    if 'park' in t or 'parking' in t or 'parking' in name or 'disab' in t:
+        return ('P', '#2196f3', 'Parking')
+    if source_name == 'Ramps (city infrastructure)' or 'ramp' in t or 'curb' in name or 'slope' in name:
+        return ('♿', '#ff8c42', 'Ramps')
+    if source_name == 'Service Animal Friendly' or 'dog' in name or 'service animal' in name or 'service dog' in name:
+        return ('🐶', '#8b5a2b', 'Service Animal Friendly')
+    if 'park' in name or source_name == 'Park Details (augmented)' or 'park' in t:
+        return ('🌳', '#31a354', 'Parks')
+    return ('🚻', '#e34a33', 'Restrooms')
+
+def make_rating_div_icon(rating, size=64):
+    html = (
+        f"<div style=\"display:flex;align-items:center;justify-content:center;"
+        f"background:#1e90ff;color:#fff;border-radius:10px;padding:6px 10px;min-width:{int(size*0.8)}px;"
+        f"font-weight:600;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,0.25)\">{rating}</div>"
+    )
+    return folium.DivIcon(html=html, icon_size=(size, int(size*0.6)), icon_anchor=(int(size/2), int(size/2)))
+
+# --- Main App ---
 
 def show_accessible_map():
     st.header("Accessible Places Map — Boston")
-    st.markdown("<div style='font-size:18px; font-weight:600; color:#222; margin-bottom:6px;'>Find all accessible places near you with our map, complete with ratings and reviews!</div>", unsafe_allow_html=True)
-    st.write("Interactive map with accessible park entrances, ramps, parking, playgrounds and service-animal friendly places.")
+    st.markdown(
+        "<div style='font-size:18px; font-weight:600; color:#222; margin-bottom:6px;'>"
+        "Find all accessible places near you with our map, complete with ratings and reviews!</div>",
+        unsafe_allow_html=True
+    )
+
+    # Initialize session state for reviews
+    if 'restaurant_pois' not in st.session_state:
+        st.session_state.restaurant_pois = [
+            {
+                'id': 'clover_fin',
+                'name': 'CLOVER FOOD LAB (sample location)',
+                'lat': 42.3605,
+                'lng': -71.0580,
+                'rating': 4.9,
+                'reviews': [
+                    {'text': 'They use online menus to let customers get the menu read out loud', 'stars': 4.8},
+                    {'text': "The fact that I have an access-related question doesn’t faze them.", 'stars': 5.0}
+                ]
+            }
+        ]
 
     # Center map
     center = [42.3601, -71.0589]
     m = folium.Map(location=center, zoom_start=13)
 
-    # Layer groups for different POI types
+    # Layer groups
     entrances_fg = folium.FeatureGroup(name="Park Entrances")
     details_fg = folium.FeatureGroup(name="Park Details")
     ramps_fg = folium.FeatureGroup(name="Ramps")
     service_fg = folium.FeatureGroup(name="Service Animal Friendly")
 
-    # Sample restaurant POIs with reviews
-    restaurant_pois = [
-        {
-            'id': 'clover_fin',
-            'name': 'CLOVER FOOD LAB (sample location)',
-            'lat': 42.3605,
-            'lng': -71.0580,
-            'rating': 4.9,
-            'reviews': [
-                { 'text': 'They use online menus to let customers get the menu read out loud', 'stars': 4.8 },
-                { 'text': "The fact that I have an access-related question doesn’t faze them because they’re supposed to answer a lot of questions.", 'stars': 5.0 }
-            ]
-        }
-    ]
-
-    # Keep existing ArcGIS/Socrata endpoints intact
+    # ArcGIS/Socrata endpoints
     endpoints = [
         {
             'name': 'Park Entrances (accessible)',
@@ -149,73 +195,49 @@ def show_accessible_map():
         }
     ]
 
-    # Function to create emoji DivIcon for POIs
-    def make_div_icon(emoji, bg, size=30):
-        font_size = max(8, int(size * 0.53))
-        html = f"<div style='background:{bg};color:white;border-radius:50%;width:{size}px;height:{size}px;display:flex;align-items:center;justify-content:center;font-size:{font_size}px'>{emoji}</div>"
-        anchor = int(size / 2)
-        return folium.DivIcon(html=html, icon_size=(size, size), icon_anchor=(anchor, anchor))
-
-    def icon_spec_for_props(props, source_name=None):
-        t = ''
-        name = ''
-        if isinstance(props, dict):
-            t = (props.get('TYPE') or props.get('type') or props.get('feature_type') or props.get('category') or '')
-            name = (props.get('NAME') or props.get('name') or props.get('park_name') or '')
-        t = (t or '').lower()
-        name = (name or '').lower()
-        if 'play' in t or 'play' in name or 'playground' in name:
-            return ('🛝', '#ff66b2', 'Playgrounds')
-        if 'park' in t or 'parking' in t or 'parking' in name or 'disab' in t:
-            return ('P', '#2196f3', 'Parking')
-        if source_name == 'Ramps (city infrastructure)' or 'ramp' in t or 'curb' in name or 'slope' in name:
-            return ('♿', '#ff8c42', 'Ramps')
-        if source_name == 'Service Animal Friendly' or 'dog' in name or 'service animal' in name or 'service dog' in name:
-            return ('🐶', '#8b5a2b', 'Service Animal Friendly')
-        if 'park' in name or source_name == 'Park Details (augmented)' or 'park' in t:
-            return ('🌳', '#31a354', 'Parks')
-        return ('🚻', '#e34a33', 'Restrooms')
-
-    # Fetch and add all endpoint POIs
+    # Fetch and add external POIs
     for ep in endpoints:
         try:
             resp = requests.get(ep['url'], timeout=10)
             resp.raise_for_status()
             data = resp.json()
-            if isinstance(data, dict) and data.get('type') == 'FeatureCollection' and 'features' in data:
+            if isinstance(data, dict) and data.get('type') == 'FeatureCollection':
                 for feat in data['features']:
-                    geom = feat.get('geometry') or {}
-                    props = feat.get('properties') or {}
-                    if geom and geom.get('type') == 'Point':
+                    geom = feat.get('geometry', {})
+                    props = feat.get('properties', {})
+                    if geom.get('type') == 'Point':
                         coords = geom.get('coordinates')
-                        if coords and len(coords) >= 2:
+                        if coords:
                             lng, lat = coords[0], coords[1]
-                            emoji, color, cat = icon_spec_for_props(props, source_name=ep.get('name'))
-                            icon = make_div_icon(emoji, color, size=30)
-                            folium.Marker(location=[lat, lng], popup=props.get('NAME') or props.get('name') or '', icon=icon).add_to(ep['layer'])
+                            emoji, color, cat = icon_spec_for_props(props, source_name=ep['name'])
+                            icon = make_div_icon(emoji, color, 30)
+                            folium.Marker(location=[lat, lng], popup=props.get('NAME', ''), icon=icon).add_to(ep['layer'])
                     else:
-                        folium.GeoJson(feat, style_function=lambda feature, style=ep['style']: style(feature)).add_to(ep['layer'])
-            else:
-                folium.GeoJson(data, name=ep['name'], style_function=lambda feature, style=ep['style']: style(feature)).add_to(ep['layer'])
+                        folium.GeoJson(feat, style_function=lambda f, s=ep['style']: s(f)).add_to(ep['layer'])
         except Exception as e:
             st.sidebar.warning(f"Failed to load {ep['name']}: {e}")
 
-    # Add Clover Food Lab marker with prettier popup
-    def make_rating_div_icon(rating, size=64):
-        html = (
-            f"<div style=\"display:flex;align-items:center;justify-content:center;"
-            f"background:#1e90ff;color:#fff;border-radius:10px;padding:6px 10px;min-width:{int(size*0.8)}px;"
-            f"font-weight:600;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,0.25)\">{rating}</div>"
-        )
-        return folium.DivIcon(html=html, icon_size=(size, int(size*0.6)), icon_anchor=(int(size/2), int(size/2)))
+    # Add restaurant POIs with interactive review input
+    for idx, r in enumerate(st.session_state.restaurant_pois):
+        with st.expander(f"{r['name']} - Rating: {r['rating']:.1f} ★"):
+            for rev in r['reviews']:
+                st.markdown(f"**{rev['stars']}/5** - {rev['text']}")
+            # User input for new review
+            new_review = st.text_area(f"Add your review for {r['name']}", key=f"review_{idx}")
+            new_stars = st.slider("Rating", min_value=0.0, max_value=5.0, value=5.0, step=0.1, key=f"stars_{idx}")
+            if st.button("Submit Review", key=f"submit_{idx}"):
+                st.session_state.restaurant_pois[idx]['reviews'].append({'text': new_review, 'stars': new_stars})
+                # Update average rating
+                total = sum([rev['stars'] for rev in st.session_state.restaurant_pois[idx]['reviews']])
+                count = len(st.session_state.restaurant_pois[idx]['reviews'])
+                st.session_state.restaurant_pois[idx]['rating'] = round(total / count, 2)
+                st.success("Review added!")
 
-    for r in restaurant_pois:
+        # Add marker to map
         popup_html = f"""
         <div style='min-width:250px; font-family:sans-serif;'>
             <div style='font-size:18px; font-weight:700; margin-bottom:4px'>{r['name']}</div>
-            <div style='font-size:16px; margin-bottom:6px'>Rating: {r['rating']} ★</div>
-            <div style='border-top:1px solid #eee; margin-bottom:6px'></div>
-            {''.join([f"<div style='margin-bottom:8px'><strong>{rev['stars']}/5</strong>: {rev['text']}</div>" for rev in r['reviews']])}
+            <div style='font-size:16px; margin-bottom:6px'>Rating: {r['rating']:.1f} ★</div>
         </div>
         """
         folium.Marker(
@@ -224,16 +246,16 @@ def show_accessible_map():
             icon=make_rating_div_icon(r['rating'])
         ).add_to(details_fg)
 
-    # Add all layers to map
+    # Add all layers
     entrances_fg.add_to(m)
     details_fg.add_to(m)
     ramps_fg.add_to(m)
     service_fg.add_to(m)
-
     folium.LayerControl(collapsed=False).add_to(m)
 
-    # Render map in Streamlit
     st_data = st_folium(m, height=720)
 
+# --- Main execution ---
 if __name__ == "__main__":
-    main()
+    show_accessible_map()
+
