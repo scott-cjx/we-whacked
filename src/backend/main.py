@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.routes import health, api, restrooms, cache, reviews
+from backend.routes import health, api, restrooms, cache, reviews, service_requests, chatbot
 
 # Create FastAPI app
 app = FastAPI(
@@ -28,6 +28,8 @@ app.include_router(api.router, prefix="/api", tags=["api"])
 app.include_router(restrooms.router, prefix="/restrooms", tags=["restrooms"])
 app.include_router(reviews.router, prefix="/reviews", tags=["reviews"])
 app.include_router(cache.router, prefix="/cache", tags=["cache"])
+app.include_router(service_requests.router, prefix="/service-requests", tags=["service-requests"])
+app.include_router(chatbot.router, prefix="/chatbot", tags=["chatbot"])
 
 
 @app.get("/", tags=["root"])

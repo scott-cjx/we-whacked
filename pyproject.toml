@@ -16,8 +16,14 @@ dependencies = [
 	"uvicorn[standard]",
     "streamlit",
     "pydantic",
+    "pydantic-settings",
     "python-multipart",
-    "aiohttp"
+    "aiohttp",
+    "streamlit_folium",
+    "folium",
+    "google-generativeai",
+    "pandas",
+    "pyarrow"
 ]
 
 [tool.setuptools]
